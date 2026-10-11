@@ -1,0 +1,8 @@
+*.exe
+*.out
+*.o
+
+.vscode/
+
+gmon.txt
+primos.txt
