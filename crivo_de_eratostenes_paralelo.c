@@ -13,7 +13,7 @@ bool *sieve_of_eratosthenes(int *base_primes, int base_limit, int base_count, in
     // Verifica se a memória foi alocada corretamente:
     if(prime_numbers == NULL) {
         printf("A memória não foi alocada corretamente!");
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);   
     }
 
     // Inicializa o vetor dos números primos com true:
@@ -44,7 +44,7 @@ bool *sieve_of_eratosthenes(int *base_primes, int base_limit, int base_count, in
 
     else {
         // O processo escravo deve gerar os seus primos usando os primos-base:
-        
+
         int first_multiple, prime_number;
         for(int i = 0; i < base_count; i++) {
             prime_number = base_primes[i];
@@ -69,6 +69,13 @@ bool *sieve_of_eratosthenes(int *base_primes, int base_limit, int base_count, in
 }
 
 int main(int argc, char *argv[]) {
+    // Verifica se os argumentos são válidos:
+    if(argc != 2) {
+        printf("Argumentos inválidos!\n");
+        printf("Formato correto: mpirun -np size ./crivo_de_eratostenes_paralelo N\n");
+        exit(1);
+    }
+
     MPI_Init(&argc, &argv);
 
     int rank, size;
@@ -85,15 +92,27 @@ int main(int argc, char *argv[]) {
     int *base_primes = NULL; // números primos até raiz de N
 
     int num_primes = 0; 
+    double start_time, end_time, duration_time;
+
+    // Inicia a contagem de tempo:
+    MPI_Barrier(MPI_COMM_WORLD);
 
     // Processo mestre lê o valor de n e determina os primos-base:
     if(rank == MASTER) {
-        scanf("%d", &n);
+        start_time = MPI_Wtime();
+
+        // Verifica se o número de processos é válido:
+        if(size < 2) {
+            printf("O número de processos está inválido!\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        n = atoi(argv[1]);
 
         // Verifica se o valor de n é válido:
         if(n < 2) {
             printf("O valor %d de n esta invalido!", n);
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         base_limit = (int) sqrt(n);
@@ -114,7 +133,7 @@ int main(int argc, char *argv[]) {
         // Verifica se a memória foi alocada corretamente:
         if(base_primes == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         // Obtém os números primos até raiz de N:
@@ -125,6 +144,9 @@ int main(int argc, char *argv[]) {
                 j++;
             }
         }
+
+        free(prime_numbers);
+        prime_numbers = NULL;
     }
 
     // Enviando os valores de raiz de N e o total de números primos de 2 até
@@ -139,7 +161,7 @@ int main(int argc, char *argv[]) {
         // Verifica se a memória foi alocada corretamente:
         if(base_primes == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
     
@@ -183,7 +205,7 @@ int main(int argc, char *argv[]) {
         // Verifica se a memória foi alocada corretamente:
         if(primes == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         // Obtém os números primos do array do escravo:
@@ -196,6 +218,9 @@ int main(int argc, char *argv[]) {
         }
 
         num_primes = j;
+
+        free(prime_numbers);
+        free(base_primes);
     }
 
     int *recvcounts = NULL, *displs = NULL;
@@ -208,20 +233,21 @@ int main(int argc, char *argv[]) {
         // Verifica se a memória foi alocada corretamente:
         if(recvcounts == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
 
     // O processo mestre recebe o número de primos dos processos escravos:
     MPI_Gather(&num_primes, 1, MPI_INT, recvcounts, 1, MPI_INT, MASTER, MPI_COMM_WORLD);
     
+    // O processo mestre aloca o array displs:
     if(rank == MASTER) {
         displs = (int*) malloc(size * sizeof(int));
 
         // Verifica se a memória foi alocada corretamente:
         if(displs == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
         // Calculando os deslocamentos usados para armazenar os números primos
@@ -237,7 +263,7 @@ int main(int argc, char *argv[]) {
         // Verifica se a memória foi alocada corretamente:
         if(primes == NULL) {
             printf("A memória não foi alocada corretamente!");
-            exit(1);
+            MPI_Abort(MPI_COMM_WORLD, 1);
         }
     }
 
@@ -246,6 +272,11 @@ int main(int argc, char *argv[]) {
     
     // O processo mestre salva os números primos no arquivo de saída:
     if(rank == MASTER) {
+        end_time = MPI_Wtime();
+        
+        duration_time = end_time - start_time;        
+        printf("Duração: %lf segundos\n", duration_time);
+
         FILE *output = fopen("primos.txt", "w");
 
         // Verifica se o arquivo de saída foi criado corretamente:
@@ -259,6 +290,11 @@ int main(int argc, char *argv[]) {
         }
         
         fclose(output);
+
+        free(base_primes);
+        free(recvcounts);
+        free(displs);
+        free(primes);
     }
 
     MPI_Finalize();
